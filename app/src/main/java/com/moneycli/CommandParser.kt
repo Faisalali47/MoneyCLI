@@ -66,6 +66,14 @@ class CommandParser {
             }
 
             // ========================================================
+            // EXPORT
+            // ========================================================
+
+            lower == "export" -> {
+                ParsedCommand.Export
+            }
+
+            // ========================================================
             // RESET
             // ========================================================
 
@@ -217,6 +225,10 @@ class CommandParser {
                 )
             }
 
+            // ========================================================
+            // UNKNOWN COMMAND
+            // ========================================================
+
             else -> {
                 ParsedCommand.Unknown(input)
             }
@@ -272,6 +284,8 @@ sealed class ParsedCommand {
     data object Clear : ParsedCommand()
 
     data object Cancel : ParsedCommand()
+
+    data object Export : ParsedCommand()
 
     data object Reset : ParsedCommand()
 

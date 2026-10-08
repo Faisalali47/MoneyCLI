@@ -17,8 +17,19 @@ import java.util.Locale
 import android.text.SpannableString
 import android.text.Spannable
 import android.text.style.ForegroundColorSpan
+import com.moneycli.finance.CsvExporter
+import android.content.Intent
+import java.util.Date
 
 class MainActivity : Activity() {
+
+	private lateinit var csvExporter: CsvExporter
+
+	private var pendingCsvContent: String? = null
+
+	companion object {
+	    private const val CREATE_CSV_FILE = 1001
+	}
 
     // ========================================================
     // UI
@@ -71,6 +82,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+csvExporter = CsvExporter()
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -148,6 +161,66 @@ class MainActivity : Activity() {
 
         setContentView(root)
     }
+
+// ========================================================
+// CSV FILE RESULT
+// ========================================================
+
+override fun onActivityResult(
+    requestCode: Int,
+    resultCode: Int,
+    data: android.content.Intent?
+) {
+    super.onActivityResult(
+        requestCode,
+        resultCode,
+        data
+    )
+
+    if (
+        requestCode == CREATE_CSV_FILE &&
+        resultCode == RESULT_OK &&
+        data?.data != null
+    ) {
+        try {
+            val uri = data.data!!
+            val content = pendingCsvContent
+                ?: throw IllegalStateException("CSV content is missing")
+
+            contentResolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(
+                    content.toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            pendingCsvContent = null
+
+            appendTerminal(
+                """
+                ✓ CSV export successful
+
+                File saved successfully.
+                """.trimIndent()
+            )
+
+        } catch (e: Exception) {
+            pendingCsvContent = null
+
+            appendTerminal(
+                "Error: Failed to save CSV"
+            )
+        }
+    } else if (
+        requestCode == CREATE_CSV_FILE &&
+        resultCode == RESULT_CANCELED
+    ) {
+        pendingCsvContent = null
+
+        appendTerminal(
+            "CSV export cancelled."
+        )
+    }
+}
 
     // ========================================================
     // COMMAND PROCESSING
@@ -231,6 +304,8 @@ private fun executeParsedCommand(command: String) {
         }
 
         ParsedCommand.Cancel -> cancelPendingOperation()
+
+ParsedCommand.Export -> exportCsv()
 
         ParsedCommand.Reset -> requestResetConfirmation()
 
@@ -1197,4 +1272,41 @@ private fun styleTerminalText(text: String): SpannableString {
             )
         }
     }
+
+// ========================================================
+// EXPORT CSV
+// ========================================================
+
+private fun exportCsv() {
+    try {
+        val transactions = finance.getTransactions()
+        val csvContent = csvExporter.generateCsv(transactions)
+
+        pendingCsvContent = csvContent
+
+        val dateFormat = SimpleDateFormat(
+            "yyyy-MM-dd_HH-mm-ss",
+            Locale.getDefault()
+        )
+
+        val fileName =
+            "MoneyCLI_${dateFormat.format(Date())}.csv"
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_TITLE, fileName)
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+
+        startActivityForResult(
+            intent,
+            CREATE_CSV_FILE
+        )
+
+    } catch (e: Exception) {
+        appendTerminal(
+            "Error: Failed to prepare CSV export"
+        )
+    }
+}
 }
