@@ -155,6 +155,55 @@ class FinanceCoreTest {
         }
     }
 
+@Test
+fun deleteTransaction_shouldRenumberRemainingTransactions() {
+    finance.addIncome(
+        100000,
+        "Income 1",
+        Wallet.CASH
+    )
+
+    finance.addIncome(
+        200000,
+        "Income 2",
+        Wallet.CASH
+    )
+
+    finance.addIncome(
+        300000,
+        "Income 3",
+        Wallet.CASH
+    )
+
+    finance.addIncome(
+        400000,
+        "Income 4",
+        Wallet.CASH
+    )
+
+    finance.addIncome(
+        500000,
+        "Income 5",
+        Wallet.CASH
+    )
+
+    finance.deleteTransaction(3)
+
+    val transactions = finance.getTransactions()
+
+    assertEquals(4, transactions.size)
+
+    assertEquals(1, transactions[0].id)
+    assertEquals(2, transactions[1].id)
+    assertEquals(3, transactions[2].id)
+    assertEquals(4, transactions[3].id)
+
+    assertEquals("Income 1", transactions[0].description)
+    assertEquals("Income 2", transactions[1].description)
+    assertEquals("Income 4", transactions[2].description)
+    assertEquals("Income 5", transactions[3].description)
+}
+
     @Test
     fun transferOverBalance_shouldBeRejected() {
         finance.addIncome(

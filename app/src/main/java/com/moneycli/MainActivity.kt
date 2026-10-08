@@ -60,6 +60,8 @@ class MainActivity : Activity() {
         FinanceCore(this)
     }
 
+	private val commandParser = CommandParser()
+
     // ========================================================
     // ACTIVITY
     // ========================================================
@@ -148,114 +150,108 @@ class MainActivity : Activity() {
     // COMMAND PROCESSING
     // ========================================================
 
-    private fun executeCommand() {
-        val command = input.text.toString().trim()
+private fun executeCommand() {
+    val command = input.text.toString().trim()
 
-        if (command.isEmpty()) {
-            return
-        }
-
-        if (awaitingResetConfirmation) {
-            handleResetConfirmation(command)
-            input.text.clear()
-            return
-        }
-
-        if (awaitingIncomeWallet) {
-            appendTerminal("ical:\\MoneyCLI> $command")
-            handleIncomeWalletSelection(command)
-            input.text.clear()
-            return
-        }
-
-        if (awaitingExpenseWallet) {
-            appendTerminal("ical:\\MoneyCLI> $command")
-            handleExpenseWalletSelection(command)
-            input.text.clear()
-            return
-        }
-
-        if (awaitingTransferSource) {
-            appendTerminal("ical:\\MoneyCLI> $command")
-            handleTransferSource(command)
-            input.text.clear()
-            return
-        }
-
-        if (awaitingTransferDestination) {
-            appendTerminal("ical:\\MoneyCLI> $command")
-            handleTransferDestination(command)
-            input.text.clear()
-            return
-        }
-
-        appendTerminal("ical:\\MoneyCLI> $command")
-
-        when {
-            command.lowercase() == "balance" -> {
-                showBalance()
-            }
-
-            command.lowercase() == "transactions" -> {
-                showTransactions()
-            }
-
-            command.lowercase().startsWith("income add") -> {
-                handleIncome(command)
-            }
-
-            command.lowercase().startsWith("expense add") -> {
-                handleExpense(command)
-            }
-
-            command.lowercase().startsWith("transfer") -> {
-                handleTransfer(command)
-            }
-
-            command.lowercase() == "transaction reset" -> {
-                requestResetConfirmation()
-            }
-
-            command.lowercase() == "help" -> {
-                showHelp()
-            }
-
-            command.lowercase().startsWith("transaction delete") -> {
-                handleDeleteTransaction(command)
-            }
-
-            command.lowercase().startsWith("transaction edit") -> {
-                handleEditTransaction(command)
-            }
-
-            command.lowercase() == "stats" -> {
-                showStats()
-            }
-
-            command.lowercase() == "clear" -> {
-                terminal.text =
-                    "MONEY CLI\n────────────────────────────\n\nical:\\MoneyCLI>"
-            }
-
-            command.lowercase() == "cancel" -> {
-                cancelPendingOperation()
-            }
-
-            else -> {
-                appendTerminal(
-                    """
-                    Unknown command: $command
-
-                    Type 'help' for available commands.
-                    """.trimIndent()
-                )
-            }
-        }
-
-        input.text.clear()
-        scrollToBottom()
+    if (command.isEmpty()) {
+        return
     }
 
+    if (awaitingResetConfirmation) {
+        handleResetConfirmation(command)
+        input.text.clear()
+        return
+    }
+
+    if (awaitingIncomeWallet) {
+        appendTerminal("ical:\\MoneyCLI> $command")
+        handleIncomeWalletSelection(command)
+        input.text.clear()
+        return
+    }
+
+    if (awaitingExpenseWallet) {
+        appendTerminal("ical:\\MoneyCLI> $command")
+        handleExpenseWalletSelection(command)
+        input.text.clear()
+        return
+    }
+
+    if (awaitingTransferSource) {
+        appendTerminal("ical:\\MoneyCLI> $command")
+        handleTransferSource(command)
+        input.text.clear()
+        return
+    }
+
+    if (awaitingTransferDestination) {
+        appendTerminal("ical:\\MoneyCLI> $command")
+        handleTransferDestination(command)
+        input.text.clear()
+        return
+    }
+
+    appendTerminal("ical:\\MoneyCLI> $command")
+
+executeParsedCommand(command)
+
+    input.text.clear()
+    scrollToBottom()
+}
+
+// ========================================================
+// PARSED COMMAND EXECUTION
+// ========================================================
+
+private fun executeParsedCommand(command: String) {
+    val parsedCommand = try {
+        commandParser.parse(command)
+    } catch (e: IllegalArgumentException) {
+        appendTerminal(
+            e.message ?: "Invalid command"
+        )
+        return
+    }
+
+    when (parsedCommand) {
+        ParsedCommand.Balance -> showBalance()
+
+        ParsedCommand.Transactions -> showTransactions()
+
+        ParsedCommand.Stats -> showStats()
+
+        ParsedCommand.Help -> showHelp()
+
+        ParsedCommand.Clear -> {
+            terminal.text =
+                "MONEY CLI\n────────────────────────────\n\nical:\\MoneyCLI>"
+        }
+
+        ParsedCommand.Cancel -> cancelPendingOperation()
+
+        ParsedCommand.Reset -> requestResetConfirmation()
+
+        is ParsedCommand.Income -> handleIncome(command)
+
+        is ParsedCommand.Expense -> handleExpense(command)
+
+        is ParsedCommand.Transfer -> handleTransfer(command)
+
+        is ParsedCommand.Delete -> handleDeleteTransaction(command)
+
+        is ParsedCommand.Edit -> handleEditTransaction(command)
+
+        is ParsedCommand.Unknown -> {
+            appendTerminal(
+                """
+                Unknown command: ${parsedCommand.command}
+
+                Type 'help' for available commands.
+                """.trimIndent()
+            )
+        }
+    }
+}
     // ========================================================
     // INCOME
     // ========================================================
@@ -617,47 +613,77 @@ class MainActivity : Activity() {
     // ========================================================
 
     private fun handleDeleteTransaction(command: String) {
-        try {
+    try {
+        val shortCommand = command.trim().lowercase()
+
+        val id = if (shortCommand.startsWith("del ")) {
+            val parts = command.trim().split(Regex("\\s+"))
+
+            if (parts.size < 2) {
+                throw IllegalArgumentException("Transaction ID not found")
+            }
+
+            parts[1].toIntOrNull()
+                ?: throw IllegalArgumentException("Transaction ID not found")
+        } else {
             val regex = Regex("""-id\s+(\d+)""")
 
             val match = regex.find(command)
                 ?: throw IllegalArgumentException("Transaction ID not found")
 
-            val id = match.groupValues[1].toInt()
+            match.groupValues[1].toInt()
+        }
 
-            val deleted = finance.deleteTransaction(id)
+        val deleted = finance.deleteTransaction(id)
 
-            if (deleted) {
-                appendTerminal(
-                    """
-                    ✓ Transaction deleted
-                    ID: #$id
-                    """.trimIndent()
-                )
-            } else {
-                appendTerminal(
-                    "Transaction #$id not found"
-                )
-            }
-
-        } catch (e: Exception) {
+        if (deleted) {
             appendTerminal(
                 """
-                Error: ${e.message}
-
-                Example:
-                transaction delete -id 2
+                ✓ Transaction deleted
+                ID: #$id
                 """.trimIndent()
             )
+        } else {
+            appendTerminal("Transaction #$id not found")
         }
+
+    } catch (e: Exception) {
+        appendTerminal(
+            """
+            Error: ${e.message}
+
+            Examples:
+            transaction delete -id 2
+            del 2
+            """.trimIndent()
+        )
     }
+}
 
     // ========================================================
     // EDIT
     // ========================================================
 
     private fun handleEditTransaction(command: String) {
-        try {
+    try {
+        val shortCommand = command.trim().lowercase()
+
+        val id: Int
+        val amount: Long
+
+        if (shortCommand.startsWith("edit ")) {
+            val parts = command.trim().split(Regex("\\s+"))
+
+            if (parts.size < 3) {
+                throw IllegalArgumentException("ID or amount not found")
+            }
+
+            id = parts[1].toIntOrNull()
+                ?: throw IllegalArgumentException("Transaction ID not found")
+
+            amount = parts[2].toLongOrNull()
+                ?: throw IllegalArgumentException("Amount not found")
+        } else {
             val idRegex = Regex("""-id\s+(\d+)""")
             val amountRegex = Regex("""-n\s+(\d+)""")
 
@@ -667,58 +693,90 @@ class MainActivity : Activity() {
             val amountMatch = amountRegex.find(command)
                 ?: throw IllegalArgumentException("Amount not found")
 
-            val id = idMatch.groupValues[1].toInt()
-            val amount = amountMatch.groupValues[1].toLong()
+            id = idMatch.groupValues[1].toInt()
+            amount = amountMatch.groupValues[1].toLong()
+        }
 
-            val updated = finance.editTransaction(id, amount)
+        val updated = finance.editTransaction(id, amount)
 
-            if (updated) {
-                appendTerminal(
-                    """
-                    ✓ Transaction updated
-                    ID: #$id
-                    Amount: Rp$amount
-                    """.trimIndent()
-                )
-            } else {
-                appendTerminal(
-                    "Transaction #$id not found"
-                )
-            }
-
-        } catch (e: Exception) {
+        if (updated) {
             appendTerminal(
                 """
-                Error: ${e.message}
-
-                Example:
-                transaction edit -id 2 -n 35000
+                ✓ Transaction updated
+                ID: #$id
+                Amount: Rp$amount
                 """.trimIndent()
             )
+        } else {
+            appendTerminal("Transaction #$id not found")
         }
+
+    } catch (e: Exception) {
+        appendTerminal(
+            """
+            Error: ${e.message}
+
+            Examples:
+            transaction edit -id 2 -n 35000
+            edit 2 35000
+            """.trimIndent()
+        )
     }
+}
 
     // ========================================================
     // PARSING
     // ========================================================
 
     private fun extractAmount(command: String): Long {
-        val regex = Regex("""-n\s+(\d+)""")
+    val shortCommand = command.trim().lowercase()
 
-        val match = regex.find(command)
+    if (
+        shortCommand.startsWith("in ") ||
+        shortCommand.startsWith("ex ") ||
+        shortCommand.startsWith("tr ")
+    ) {
+        val parts = command.trim().split(Regex("\\s+"), limit = 3)
+
+        if (parts.size < 2) {
+            throw IllegalArgumentException("Amount not found")
+        }
+
+        return parts[1].toLongOrNull()
             ?: throw IllegalArgumentException("Amount not found")
-
-        return match.groupValues[1].toLong()
     }
+
+    val regex = Regex("""-n\s+(\d+)""")
+
+    val match = regex.find(command)
+        ?: throw IllegalArgumentException("Amount not found")
+
+    return match.groupValues[1].toLong()
+}
 
     private fun extractDescription(command: String): String {
-        val regex = Regex("""-d\s+"([^"]*)"""")
-        
-        val match = regex.find(command)
-            ?: throw IllegalArgumentException("Description not found")
+    val shortCommand = command.trim().lowercase()
 
-        return match.groupValues[1]
+    if (
+        shortCommand.startsWith("in ") ||
+        shortCommand.startsWith("ex ")
+    ) {
+        val parts = command.trim().split(Regex("\\s+"), limit = 3)
+
+        if (parts.size < 3 || parts[2].isBlank()) {
+            throw IllegalArgumentException("Description not found")
+        }
+
+        return parts[2].trim()
     }
+
+    val regex = Regex("""-d\s+"([^"]*)"""")
+
+    val match = regex.find(command)
+        ?: throw IllegalArgumentException("Description not found")
+
+    return match.groupValues[1]
+}
 
     // ========================================================
     // TRANSACTIONS
@@ -826,33 +884,46 @@ class MainActivity : Activity() {
     // HELP
     // ========================================================
 
-    private fun showHelp() {
-        appendTerminal(
-            """
-            Available commands:
+   private fun showHelp() {
+    appendTerminal(
+        """
+        Available commands:
 
-            balance
-            transactions
-            stats
+        balance
+        bal
 
-            income add -n <amount> -d "<description>"
+        transactions
+        tx
 
-            expense add -n <amount> -d "<description>"
+        stats
+        st
 
-            transfer -n <amount>
+        income add -n <amount> -d "<description>"
+        in <amount> <description>
 
-            transaction delete -id <id>
-            transaction edit -id <id> -n <amount>
-            transaction reset
+        expense add -n <amount> -d "<description>"
+        ex <amount> <description>
 
-            help
-            clear
+        transfer -n <amount>
+        tr <amount>
 
-            Type "cancel" during wallet selection
-            to cancel the current operation.
-            """.trimIndent()
-        )
-    }
+        transaction delete -id <id>
+        del <id>
+
+        transaction edit -id <id> -n <amount>
+        edit <id> <amount>
+
+        transaction reset
+        reset
+
+        help
+        clear
+
+        Type "cancel" during wallet selection
+        to cancel the current operation.
+        """.trimIndent()
+    )
+}
 
     // ========================================================
     // TERMINAL

@@ -355,22 +355,93 @@ class FinanceCore(context: Context) {
             .count { it.type == Transaction.Type.TRANSFER }
     }
 
-    // ========================================================
-    // DELETE TRANSACTION
-    // ========================================================
+// ========================================================
+// DELETE TRANSACTION
+// ========================================================
 
-    fun deleteTransaction(id: Int): Boolean {
-        val db = dbHelper.writableDatabase
+fun deleteTransaction(id: Int): Boolean {
+    val db = dbHelper.writableDatabase
 
+    db.beginTransaction()
+
+    try {
         val deletedRows = db.delete(
             "transactions",
             "id = ?",
             arrayOf(id.toString())
         )
 
-        return deletedRows > 0
-    }
+        if (deletedRows == 0) {
+            return false
+        }
 
+        // ========================================================
+        // TEMPORARY ID
+        // ========================================================
+
+        db.execSQL(
+            "UPDATE transactions SET id = -id"
+        )
+
+        // ========================================================
+        // RENUMBER TRANSACTIONS
+        // ========================================================
+
+        val cursor = db.query(
+            "transactions",
+            arrayOf("id"),
+            null,
+            null,
+            null,
+            null,
+            "id DESC"
+        )
+
+        cursor.use {
+            var newId = 1
+
+            while (it.moveToNext()) {
+                val temporaryId = it.getInt(
+                    it.getColumnIndexOrThrow("id")
+                )
+
+                val values = ContentValues().apply {
+                    put("id", newId)
+                }
+
+                db.update(
+                    "transactions",
+                    values,
+                    "id = ?",
+                    arrayOf(temporaryId.toString())
+                )
+
+                newId++
+            }
+        }
+
+        // ========================================================
+        // RESET AUTOINCREMENT
+        // ========================================================
+
+        db.execSQL(
+            "DELETE FROM sqlite_sequence WHERE name = 'transactions'"
+        )
+
+        db.execSQL(
+            "INSERT INTO sqlite_sequence(name, seq) " +
+                "VALUES('transactions', " +
+                "(SELECT COALESCE(MAX(id), 0) FROM transactions))"
+        )
+
+        db.setTransactionSuccessful()
+
+        return true
+
+    } finally {
+        db.endTransaction()
+    }
+}
     // ========================================================
     // EDIT TRANSACTION
     // ========================================================
