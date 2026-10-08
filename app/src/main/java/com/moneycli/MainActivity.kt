@@ -14,6 +14,9 @@ import com.moneycli.finance.Transaction
 import com.moneycli.finance.Wallet
 import java.text.SimpleDateFormat
 import java.util.Locale
+import android.text.SpannableString
+import android.text.Spannable
+import android.text.style.ForegroundColorSpan
 
 class MainActivity : Activity() {
 
@@ -930,12 +933,155 @@ private fun executeParsedCommand(command: String) {
     // ========================================================
 
     private fun appendTerminal(text: String) {
+	val styledText = styleTerminalText(text)	
+
         terminal.append(
-            "\n\n────────────────────────────\n\n$text"
+            "\n\n────────────────────────────\n\n"
         )
+	
+	terminal.append(styledText)	
 
         scrollToBottom()
     }
+
+// ========================================================
+// TERMINAL DESIGN
+// ========================================================
+
+private fun applyColor(
+    text: SpannableString,
+    color: Int
+) {
+    text.setSpan(
+        ForegroundColorSpan(color),
+        0,
+        text.length,
+        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+    )
+}
+
+private fun styleTerminalText(text: String): SpannableString {
+    val styledText = SpannableString(text)
+
+    val commandColor = Color.rgb(86, 156, 214)
+    val numberColor = Color.rgb(181, 206, 168)
+    val successColor = Color.rgb(106, 153, 85)
+    val errorColor = Color.rgb(244, 71, 71)
+    val warningColor = Color.rgb(220, 220, 170)
+    val walletColor = Color.rgb(78, 201, 176)
+    val labelColor = Color.rgb(197, 134, 192)
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
+    if (
+        text.contains("✓") ||
+        text.contains("successful") ||
+        text.contains("added") ||
+        text.contains("updated") ||
+        text.contains("deleted")
+    ) {
+        applyColor(styledText, successColor)
+    }
+
+    // ========================================================
+    // ERROR
+    // ========================================================
+
+    if (
+        text.startsWith("Error:") ||
+        text.contains("Invalid") ||
+        text.contains("not found") ||
+        text.contains("cannot") ||
+        text.contains("failed")
+    ) {
+        applyColor(styledText, errorColor)
+    }
+
+    // ========================================================
+    // WARNING / CONFIRMATION
+    // ========================================================
+
+    if (
+        text.contains("Are you sure") ||
+        text.contains("Type") ||
+        text.contains("confirm") ||
+        text.contains("Warning")
+    ) {
+        applyColor(styledText, warningColor)
+    }
+
+    // ========================================================
+    // COMMAND
+    // ========================================================
+
+    val commandRegex = Regex(
+        """\b(income|expense|transfer|balance|transactions|stats|help|clear|cancel|reset|in|ex|tr|bal|tx|st|del|edit)\b"""
+    )
+
+    commandRegex.findAll(text).forEach { match ->
+        styledText.setSpan(
+            ForegroundColorSpan(commandColor),
+            match.range.first,
+            match.range.last + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    // ========================================================
+    // WALLET
+    // ========================================================
+
+    val walletRegex = Regex(
+        """\b(Cash|BCA)\b"""
+    )
+
+    walletRegex.findAll(text).forEach { match ->
+        styledText.setSpan(
+            ForegroundColorSpan(walletColor),
+            match.range.first,
+            match.range.last + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    // ========================================================
+    // LABEL
+    // ========================================================
+
+    val labelRegex = Regex(
+        """\b(Balance|Total|Income|Expense|Transactions|Statistics|Source|Destination|Description|Amount)\b"""
+    )
+
+    labelRegex.findAll(text).forEach { match ->
+        styledText.setSpan(
+            ForegroundColorSpan(labelColor),
+            match.range.first,
+            match.range.last + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    // ========================================================
+    // NUMBER
+    // ========================================================
+
+    val numberRegex = Regex(
+        """(?<=Rp)\d+|\b\d+\b"""
+    )
+
+    numberRegex.findAll(text).forEach { match ->
+        styledText.setSpan(
+            ForegroundColorSpan(numberColor),
+            match.range.first,
+            match.range.last + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    return styledText
+}
 
     // ========================================================
     // STATS
